@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Flappy Bird</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: #2C1810;
+        }
+        canvas {
+            width: 100vw;
+            height: 100vh;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <script>
+        let backgroundX = 0;
+        let starsX = 0;
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+    
+        const GRAVITY = 0.3;
+        const FLAP_STRENGTH = -10;
+        const PIPE_SPACING = canvas.width * 0.5;
+        const PIPE_GAP = canvas.height / 2;
+        const DRAGON_WIDTH = canvas.width / 20;
+        const DRAGON_HEIGHT = canvas.height / 15;
+        const GAME_SPEED = 10;
+
+        
+        let dragonY = canvas.height / 2;
+        let dragonVelocity = 0;
+        let pipes = [];
+        let score = 0;
+        let gameOver = false;
+        let frame = 0;
+        let gameStarted = false;
+        let dragonRotation = 0;
+
+        
+        class Dragon {
+            constructor() {
+                this.y = dragonY;
+                this.velocity = dragonVelocity;
+                this.x = canvas.width / 4;
+            }
+
+            update() {
+                if (gameStarted) {
+                    this.velocity += GRAVITY;
+                    this.y += this.velocity;
+                    const targetRotation = this.velocity * 0.04;
+                    dragonRotation += (targetRotation - dragonRotation) * 0.1;
+                }
+            }
+
+            flap() {
+                this.velocity = FLAP_STRENGTH;
+                dragonRotation = -0.5;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(dragonRotation);
+                const gradient = ctx.createLinearGradient(-DRAGON_WIDTH/2, 0, DRAGON_WIDTH/2, 0);
+                gradient.addColorStop(0, '#8B0000');  
+                gradient.addColorStop(1, '#FF4500');  
+                ctx.beginPath();
+                ctx.moveTo(-DRAGON_WIDTH/2, 0);
+                ctx.lineTo(-DRAGON_WIDTH, -DRAGON_HEIGHT/4);
+                ctx.lineTo(-DRAGON_WIDTH/1.2, 0);
+                ctx.lineTo(-DRAGON_WIDTH, DRAGON_HEIGHT/4);
+                ctx.closePath();
+                ctx.fillStyle = '#8B0000';
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(-DRAGON_WIDTH/2, -DRAGON_HEIGHT/3);
+                ctx.quadraticCurveTo(0, -DRAGON_HEIGHT/2, DRAGON_WIDTH/2, -DRAGON_HEIGHT/4);
+                ctx.quadraticCurveTo(0, DRAGON_HEIGHT/2, -DRAGON_WIDTH/2, DRAGON_HEIGHT/3);
+                ctx.closePath();
+                ctx.fillStyle = gradient;
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(0, -DRAGON_HEIGHT/4);
+                ctx.quadraticCurveTo(-DRAGON_WIDTH/2, -DRAGON_HEIGHT, -DRAGON_WIDTH/4, -DRAGON_HEIGHT/4);
+                ctx.quadraticCurveTo(-DRAGON_WIDTH/3, -DRAGON_HEIGHT/2, 0, -DRAGON_HEIGHT/4);
+                ctx.fillStyle = '#FF6347';
+                ctx.fill();
+                ctx.strokeStyle = '#8B0000';
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(DRAGON_WIDTH/2, -DRAGON_HEIGHT/6);
+                ctx.quadraticCurveTo(DRAGON_WIDTH*0.8, -DRAGON_HEIGHT/4, DRAGON_WIDTH*0.9, -DRAGON_HEIGHT/8);
+                ctx.quadraticCurveTo(DRAGON_WIDTH*0.8, 0, DRAGON_WIDTH*0.9, DRAGON_HEIGHT/8);
+                ctx.quadraticCurveTo(DRAGON_WIDTH*0.8, DRAGON_HEIGHT/4, DRAGON_WIDTH/2, DRAGON_HEIGHT/6);
+                ctx.closePath();
+                ctx.fillStyle = '#8B0000';
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(DRAGON_WIDTH*0.7, -DRAGON_HEIGHT/8);
+                ctx.lineTo(DRAGON_WIDTH*0.9, -DRAGON_HEIGHT/4);
+                ctx.lineTo(DRAGON_WIDTH*0.75, -DRAGON_HEIGHT/8);
+                ctx.fillStyle = '#FFD700';
+                ctx.fill();
+                ctx.fillStyle = '#FFD700';
+                ctx.beginPath();
+                ctx.arc(DRAGON_WIDTH*0.7, -DRAGON_HEIGHT/16, DRAGON_WIDTH/15, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#FF0000';
+                ctx.beginPath();
+                ctx.arc(DRAGON_WIDTH*0.7, -DRAGON_HEIGHT/16, DRAGON_WIDTH/30, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        class Castle {
+            constructor() {
+                this.x = canvas.width;
+                this.topHeight = Math.random() * (canvas.height - PIPE_GAP - canvas.height/4) + canvas.height/8;
+                this.passed = false;
+                this.width = canvas.width/10;
+            }
+
+            update() {
+                this.x -= GAME_SPEED;
+            }
+
+            draw() {
+                const drawWall = (x, y, height) => {
+                    const brickHeight = height/20;
+                    const brickWidth = this.width;
+                    const wallGradient = ctx.createLinearGradient(x, y, x + brickWidth, y);
+                    wallGradient.addColorStop(0, '#4a4a8b');
+                    wallGradient.addColorStop(0.5, '#7B68EE');
+                    wallGradient.addColorStop(1, '#4a4a8b');
+                    
+                    ctx.fillStyle = wallGradient;
+                    ctx.fillRect(x, y, brickWidth, height);
+
+                    ctx.strokeStyle = '#483D8B';
+                    ctx.lineWidth = 2;
+                    for (let i = 0; i < height; i += brickHeight) {
+                        ctx.beginPath();
+                        ctx.moveTo(x, y + i);
+                        ctx.lineTo(x + brickWidth, y + i);
+                        ctx.stroke();
+
+
+                        for (let j = 0; j < brickWidth; j += brickWidth/4) {
+                            if ((i/brickHeight) % 2 === 0) {
+                                ctx.beginPath();
+                                ctx.moveTo(x + j, y + i);
+                                ctx.lineTo(x + j, y + i + brickHeight);
+                                ctx.stroke();
+                            } else {
+                                ctx.beginPath();
+                                ctx.moveTo(x + j + brickWidth/8, y + i);
+                                ctx.lineTo(x + j + brickWidth/8, y + i + brickHeight);
+                                ctx.stroke();
+                            }
+                        }
+                    }
+
+                    
+                    const battlementWidth = brickWidth/8;
+                    const battlementHeight = brickHeight*1.5;
+                    ctx.fillStyle = '#483D8B';
+                    for (let i = 0; i < brickWidth; i += battlementWidth*2) {
+                        if (y === 0) {
+                            ctx.fillRect(x + i, y + height, battlementWidth, battlementHeight);
+                        } else {
+                            ctx.fillRect(x + i, y - battlementHeight, battlementWidth, battlementHeight);
+                        }
+                    }
+                };
+
+                
+                drawWall(this.x, 0, this.topHeight);
+                drawWall(this.x, this.topHeight + PIPE_GAP, canvas.height - (this.topHeight + PIPE_GAP));
+            }
+        }
+
+        const dragon = new Dragon();
+
+        
+       function drawBackground() {
+    
+    let gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    gradient.addColorStop(0, '#0B0B2D');  
+    gradient.addColorStop(0.5, '#1a0f3c'); 
+    gradient.addColorStop(1, '#4b2875');   
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    
+    ctx.fillStyle = '#FFF';
+    for (let i = 0; i < canvas.width / 4; i++) {
+        let x = ((starsX + i * 100) % canvas.width + canvas.width) % canvas.width;
+        let y = ((i * 121) % canvas.height + canvas.height) % canvas.height;
+        let size = (Math.sin(frame / 60 + i) + 2);
+        ctx.beginPath();
+        ctx.arc(x, y, size / 2, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+
+    const drawMountains = (offset, color, speed) => {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(-100, canvas.height);
+
+        const smoothness = 50; 
+        const waveFrequency = 0.002; 
+
+        for (let i = -100; i < canvas.width + 200; i += smoothness) {
+            const x = i - (frame * speed) % (smoothness * 4);
+            const height = Math.sin(i * waveFrequency + offset) * (canvas.height / 6) + (canvas.height / 4);
+            ctx.lineTo(x, canvas.height - height);
+        }
+
+        ctx.lineTo(canvas.width + 100, canvas.height);
+        ctx.fill();
+    };
+
+    drawMountains(0, '#2d1657', 0.3);  
+    drawMountains(50, '#1a0f3c', 0.5);  
+    drawMountains(100, '#0d0721', 0.8); 
+}
+
+        function gameLoop() {
+            drawBackground();
+
+            if (!gameOver) {
+                dragon.update();
+
+                if (frame % Math.floor(PIPE_SPACING/GAME_SPEED) === 0 && gameStarted) {
+                    pipes.push(new Castle());
+                }
+
+                pipes.forEach((castle, index) => {
+                    if (gameStarted) castle.update();
+                    castle.draw();
+
+                    
+                    if (
+                        dragon.x + DRAGON_WIDTH/2 > castle.x && 
+                        dragon.x - DRAGON_WIDTH/2 < castle.x + castle.width && 
+                        (dragon.y - DRAGON_HEIGHT/2 < castle.topHeight || 
+                         dragon.y + DRAGON_HEIGHT/2 > castle.topHeight + PIPE_GAP)
+                    ) {
+                        gameOver = true;
+                    }
+
+                    
+                    if (!castle.passed && castle.x + castle.width < dragon.x) {
+                        score++;
+                        castle.passed = true;
+                    }
+                });
+
+                pipes = pipes.filter(castle => castle.x > -castle.width);
+
+                if (dragon.y + DRAGON_HEIGHT/2 > canvas.height || dragon.y - DRAGON_HEIGHT/2 < 0) {
+                    gameOver = true;
+                }
+
+                dragon.draw();
+                if (gameStarted) frame++;
+            }
+
+            
+            ctx.fillStyle = '#FFD700';
+            ctx.font = `bold ${canvas.width/20}px Fantasy`;
+            ctx.fillText(`Score: ${score}`, 20, canvas.height/15);
+
+            if (!gameStarted && !gameOver) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#FFD700';
+                ctx.font = `${canvas.width/15}px Fantasy`;
+                ctx.fillText('Flappy Bird', canvas.width/2 - canvas.width/6, canvas.height/2 - canvas.height/10);
+                ctx.font = `${canvas.width/25}px Fantasy`;
+                ctx.fillText('Click to Start', canvas.width/2 - canvas.width/10, canvas.height/2 + canvas.height/10);
+            }
+
+            if (gameOver) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#FFD700';
+                ctx.font = `${canvas.width/15}px Fantasy`;
+                ctx.fillText('Game Over!', canvas.width/2 - canvas.width/6, canvas.height/2);
+                ctx.font = `${canvas.width/25}px Fantasy`;
+                ctx.fillText('Click to restart', canvas.width/2 - canvas.width/10, canvas.height/2 + canvas.height/10);
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        
+        canvas.addEventListener('click', () => {
+            if (gameOver) {
+                dragon.y = canvas.height / 2;
+                dragon.velocity = 0;
+                pipes = [];
+                score = 0;
+                gameOver = false;
+                gameStarted = false;
+                frame = 0;
+            } else if (!gameStarted) {
+                gameStarted = true;
+                dragon.flap();
+            } else {
+                dragon.flap();
+            }
+        });
+
+        
+        gameLoop();
+    </script>
+</body>
+</html>
